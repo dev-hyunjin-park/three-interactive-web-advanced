@@ -7,6 +7,17 @@ export default function () {
   });
 
   const textureLoader = new THREE.TextureLoader();
+  const cubeTextureLoader = new THREE.CubeTextureLoader();
+  const environmentMap = cubeTextureLoader.load([
+    "assets/environments/px.png",
+    "assets/environments/nx.png",
+    "assets/environments/py.png",
+    "assets/environments/ny.png",
+    "assets/environments/pz.png",
+    "assets/environments/nz.png",
+  ]);
+
+  environmentMap.encoding = THREE.sRGBEncoding;
 
   const container = document.querySelector("#container");
   // renderer.domElement에는 canvas element 정보가 담겨있음
@@ -25,6 +36,9 @@ export default function () {
 
   // Scene: 물체, 카메라, 빛이 놓일 곳
   const scene = new THREE.Scene();
+  scene.background = environmentMap; // 씬의 배경 설정
+  scene.environment = environmentMap; // 3D 객체에 반사 및 환경조명 제공
+
   // PerspectiveCamera: 원근법 3D장면을 2D 카메라에 투영하는 카메라
   const camera = new THREE.PerspectiveCamera(
     75, // field of view (시야각) - 75가 보통 사용되는 값. 값이 클수록 넓어짐
@@ -63,12 +77,32 @@ export default function () {
       // 질감 표현
       roughness: 0,
       metalness: 0,
+      opacity: 0.6,
+      transparent: true,
     });
     const geometry = new THREE.SphereGeometry(1.3, 30, 30);
 
     const mesh = new THREE.Mesh(geometry, material);
+    return mesh;
+  };
 
-    scene.add(mesh);
+  const createEarth2 = () => {
+    const material = new THREE.MeshStandardMaterial({
+      map: textureLoader.load("assets/earth-night-map.jpeg"),
+      opacity: 0.9,
+      transparent: true, // opacity를 주려면 설정 필수
+      side: THREE.BackSide, // 뒷면만 로드한다
+    });
+    const geometry = new THREE.SphereGeometry(1.5, 30, 30);
+
+    const mesh = new THREE.Mesh(geometry, material);
+    return mesh;
+  };
+
+  const create = () => {
+    const earth1 = createEarth1();
+    const earth2 = createEarth2();
+    scene.add(earth1, earth2);
   };
 
   const resize = () => {
@@ -88,7 +122,7 @@ export default function () {
 
   const initialize = () => {
     addLight();
-    createEarth1();
+    create();
     addEvent();
     draw();
   };
