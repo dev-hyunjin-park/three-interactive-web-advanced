@@ -6,6 +6,8 @@ export default function () {
     alpha: true,
   });
 
+  const textureLoader = new THREE.TextureLoader();
+
   const container = document.querySelector("#container");
   // renderer.domElement에는 canvas element 정보가 담겨있음
   container.appendChild(renderer.domElement);
@@ -19,6 +21,7 @@ export default function () {
   // 현재 디바이스 픽셀의 비율에 맞는 픽셀 값을 renderer에 넘겨준다
   // 최소 (현재 디스플레이 디바이스의 픽셀 밀도), 최대 허용 배수 (2배)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.outputEncoding = THREE.sRGBEncoding;
 
   // Scene: 물체, 카메라, 빛이 놓일 곳
   const scene = new THREE.Scene();
@@ -47,17 +50,24 @@ export default function () {
     });
   };
 
-  // 물체 생성
-  const createObject = () => {
-    // 재질
-    const material = new THREE.MeshBasicMaterial({
-      color: 0x00ff00,
-    });
-    // 형태
-    const geometry = new THREE.PlaneGeometry(1, 1);
+  const addLight = () => {
+    const light = new THREE.DirectionalLight(0xffffff);
+    light.position.set(2.65, 2.13, 1.02);
+    scene.add(light);
+  };
 
-    // 렌더링 가능한 3D 물체를 만드는 역할
+  // 물체 생성
+  const createEarth1 = () => {
+    const material = new THREE.MeshStandardMaterial({
+      map: textureLoader.load("assets/earth-night-map.jpeg"),
+      // 질감 표현
+      roughness: 0,
+      metalness: 0,
+    });
+    const geometry = new THREE.SphereGeometry(1.3, 30, 30);
+
     const mesh = new THREE.Mesh(geometry, material);
+
     scene.add(mesh);
   };
 
@@ -77,7 +87,8 @@ export default function () {
   };
 
   const initialize = () => {
-    createObject();
+    addLight();
+    createEarth1();
     addEvent();
     draw();
   };
