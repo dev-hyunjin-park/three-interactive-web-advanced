@@ -54,13 +54,23 @@ export default function () {
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
 
-  const draw = () => {
+  const draw = (obj) => {
+    const { earth1, earth2, star } = obj;
+    earth1.rotation.x += 0.0005;
+    earth1.rotation.y += 0.0005;
+
+    earth2.rotation.x += 0.0005;
+    earth2.rotation.y += 0.0005;
+
+    star.rotation.x += 0.001;
+    star.rotation.y += 0.001;
+
     // 매 프레임마다 update
     controls.update();
     renderer.render(scene, camera);
     // 매 프레임마다 실행
     requestAnimationFrame(() => {
-      draw();
+      draw(obj);
     });
   };
 
@@ -99,10 +109,48 @@ export default function () {
     return mesh;
   };
 
+  const createStar = (count = 500) => {
+    // 일반 배열이 아닌 정확한 데이터 자료를 넘겨줘야한다
+    const positions = new Float32Array(count * 3);
+    // 배열의 크기는 count * 3 -> x,y,z 세 개의 값으로 하나의 별의 위치를 나타냄
+
+    // 파티클의 위치를 무작위로 할당한다
+    for (let i = 0; i < count; i++) {
+      positions[i] = (Math.random() - 0.5) * 5; // x: 0~3 -> -3과 3 사이의 랜덤값
+      positions[i + 1] = (Math.random() - 0.5) * 5;
+      positions[i + 2] = (Math.random() - 0.5) * 5;
+    }
+
+    const particleGeometry = new THREE.BufferGeometry();
+    particleGeometry.setAttribute(
+      "position",
+      new THREE.BufferAttribute(positions, 3)
+    );
+
+    const particleMaterial = new THREE.PointsMaterial({
+      size: 0.01,
+      transparent: true,
+      depthWrite: false,
+      map: textureLoader.load("assets/particle.png"),
+      alphaMap: textureLoader.load("assets/particle.png"),
+      color: 0xbcc6c6,
+    });
+
+    const star = new THREE.Points(particleGeometry, particleMaterial);
+    return star;
+  };
+
   const create = () => {
     const earth1 = createEarth1();
     const earth2 = createEarth2();
-    scene.add(earth1, earth2);
+    const star = createStar();
+    scene.add(earth1, earth2, star);
+
+    return {
+      earth1,
+      earth2,
+      star,
+    };
   };
 
   const resize = () => {
@@ -122,9 +170,9 @@ export default function () {
 
   const initialize = () => {
     addLight();
-    create();
+    const obj = create();
     addEvent();
-    draw();
+    draw(obj);
   };
   initialize();
 }
