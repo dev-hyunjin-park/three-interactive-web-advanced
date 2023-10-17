@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { convertLatLngToPos, getGradientCanvas } from "./utils";
 
 export default function () {
   const renderer = new THREE.WebGLRenderer({
@@ -55,12 +56,9 @@ export default function () {
   controls.dampingFactor = 0.1;
 
   const draw = (obj) => {
-    const { earth1, earth2, star } = obj;
-    earth1.rotation.x += 0.0005;
-    earth1.rotation.y += 0.0005;
-
-    earth2.rotation.x += 0.0005;
-    earth2.rotation.y += 0.0005;
+    const { earthGroup, star } = obj;
+    earthGroup.rotation.x += 0.0005;
+    earthGroup.rotation.y += 0.0005;
 
     star.rotation.x += 0.001;
     star.rotation.y += 0.001;
@@ -85,14 +83,16 @@ export default function () {
     const material = new THREE.MeshStandardMaterial({
       map: textureLoader.load("assets/earth-night-map.jpeg"),
       // 질감 표현
-      roughness: 0,
-      metalness: 0,
+      // roughness: 0,
+      // metalness: 0,
+      side: THREE.FrontSide,
       opacity: 0.6,
       transparent: true,
     });
     const geometry = new THREE.SphereGeometry(1.3, 30, 30);
 
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.y = -Math.PI / 2;
     return mesh;
   };
 
@@ -106,6 +106,7 @@ export default function () {
     const geometry = new THREE.SphereGeometry(1.5, 30, 30);
 
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.rotation.y = -Math.PI / 2;
     return mesh;
   };
 
@@ -140,15 +141,81 @@ export default function () {
     return star;
   };
 
+  const createPoint1 = () => {
+    const point = {
+      lat: 37.56668 * (Math.PI / 180), // 라디안 단위로 바꿔준다
+      lng: 126.97841 * (Math.PI / 180),
+    };
+
+    const position = convertLatLngToPos(point, 1.3);
+
+    const mesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.02, 0.002, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0x263d74 })
+    );
+
+    mesh.position.set(position.x, position.y, position.z);
+    mesh.rotation.set(0.9, 2.46, 1);
+    return mesh;
+  };
+
+  const createPoint2 = () => {
+    const point = {
+      lat: 5.55363 * (Math.PI / 180), // 라디안 단위로 바꿔준다
+      lng: -0.196481 * (Math.PI / 180),
+    };
+
+    const position = convertLatLngToPos(point, 1.3);
+
+    const mesh = new THREE.Mesh(
+      new THREE.TorusGeometry(0.02, 0.002, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0x263d74 })
+    );
+
+    mesh.position.set(position.x, position.y, position.z);
+    return mesh;
+  };
+
+  const createCurve = (pos1, pos2) => {
+    const points = [];
+    for (let i = 0; i <= 100; i++) {
+      const pos = new THREE.Vector3().lerpVectors(pos1, pos2, i / 100);
+      pos.normalize(); // 1 미만으로 정규화
+
+      const wave = Math.sin((Math.PI * i) / 100);
+
+      pos.multiplyScalar(1.3 + 0.4 * wave); // 지구 반지름 크기 + 파동
+      points.push(pos);
+    }
+
+    const curve = new THREE.CatmullRomCurve3(points);
+    const geometry = new THREE.TubeGeometry(curve, 20, 0.003);
+
+    const gradientCanvas = getGradientCanvas("#757F94", "#263d74");
+    const texture = new THREE.CanvasTexture(gradientCanvas);
+
+    const material = new THREE.MeshBasicMaterial({ map: texture });
+    // three.js에선 gradient 생성 방법이 따로 없음: canvas 활용
+    const mesh = new THREE.Mesh(geometry, material);
+
+    return mesh;
+  };
+
   const create = () => {
+    const earthGroup = new THREE.Group();
+
     const earth1 = createEarth1();
     const earth2 = createEarth2();
     const star = createStar();
-    scene.add(earth1, earth2, star);
+    const point1 = createPoint1();
+    const point2 = createPoint2();
+    const curve = createCurve(point1.position, point2.position);
+
+    earthGroup.add(earth1, earth2, point1, point2, curve);
+    scene.add(earthGroup, star);
 
     return {
-      earth1,
-      earth2,
+      earthGroup,
       star,
     };
   };
