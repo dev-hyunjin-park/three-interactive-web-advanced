@@ -1,11 +1,37 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { convertLatLngToPos, getGradientCanvas } from "./utils";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
+import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass";
+import { GlitchPass } from "three/examples/jsm/postprocessing/GlitchPass";
+import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass";
+import { HalftonePass } from "three/examples/jsm/postprocessing/HalftonePass";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
+import { OutlinePass } from "three/examples/jsm/postprocessing/OutlinePass";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass";
+import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass";
 
 export default function () {
+  const canvasSize = {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  };
+
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
   });
+  // renderer.outputEncoding = THREE.sRGBEncoding;
+  const renderTarget = new THREE.WebGLRenderTarget(
+    canvasSize.width,
+    canvasSize.height,
+    {
+      samples: 2,
+    }
+  );
+
+  const effectComposer = new EffectComposer(renderer, renderTarget);
 
   const textureLoader = new THREE.TextureLoader();
   const cubeTextureLoader = new THREE.CubeTextureLoader();
@@ -23,11 +49,6 @@ export default function () {
   const container = document.querySelector("#container");
   // renderer.domElement에는 canvas element 정보가 담겨있음
   container.appendChild(renderer.domElement);
-
-  const canvasSize = {
-    width: window.innerWidth,
-    height: window.innerHeight,
-  };
 
   renderer.setSize(canvasSize.width, canvasSize.height);
   // 현재 디바이스 픽셀의 비율에 맞는 픽셀 값을 renderer에 넘겨준다
@@ -65,7 +86,8 @@ export default function () {
 
     // 매 프레임마다 update
     controls.update();
-    renderer.render(scene, camera);
+    effectComposer.render();
+    // renderer.render(scene, camera); // --> addPostEffects에 위임한다
     // 매 프레임마다 실행
     requestAnimationFrame(() => {
       draw(obj);
@@ -76,6 +98,66 @@ export default function () {
     const light = new THREE.DirectionalLight(0xffffff);
     light.position.set(2.65, 2.13, 1.02);
     scene.add(light);
+  };
+
+  const addPostEffects = (obj) => {
+    const { earthGroup } = obj;
+    const renderPass = new RenderPass(scene, camera);
+    effectComposer.addPass(renderPass);
+
+    // 필름 효과
+    // const filmPass = new FilmPass(
+    //   1, // noise intensity 0 ~ 1 범위
+    //   1, // scan line intensity 0 ~ 1 브라운관 tv 느낌
+    //   4096, // scan line count 라인 갯수 0 ~ 4096
+    //   false // 색상 값 gray scale
+    // );
+    // effectComposer.addPass(filmPass);
+
+    // 글리치 효과
+    // const glitchPass = new GlitchPass();
+    // glitchPass.goWild = true;
+    // effectComposer.addPass(glitchPass);
+
+    // 잔상 효과
+    // const afterImagePass = new AfterimagePass(0.96);
+    // effectComposer.addPass(afterImagePass);
+
+    // 점묘화 효과
+    // const halftonePass = new HalftonePass(canvasSize.width, canvasSize.height, {
+    //   radius: 10, // 점의 사이즈
+    //   shape: 1, // 점의 모양 - 타원
+    //   scatter: 0, // 점들의 흩어지는 정도
+    //   blending: 0.3, // 기존 텍스쳐와 블렌딩
+    // });
+    // effectComposer.addPass(halftonePass);
+
+    // 밝기
+    const unrealBloomPass = new UnrealBloomPass(
+      new THREE.Vector2(canvasSize.width, canvasSize.height)
+    );
+    unrealBloomPass.strength = 1.5; // 밝기
+    unrealBloomPass.threshold = 0.03; // 빛나는 영역
+    unrealBloomPass.radius = 1; // 빛이 번지는 정도 (부드럽게 빛이 넘어가는 느낌)
+    effectComposer.addPass(unrealBloomPass);
+
+    const outlinePass = new OutlinePass(
+      new THREE.Vector2(canvasSize.width, canvasSize.height),
+      scene,
+      camera
+    );
+    outlinePass.selectedObjects = [...earthGroup.children];
+    outlinePass.edgeStrength = 5;
+    outlinePass.edgeGlow = 4;
+    outlinePass.pulsePeriod = 3;
+    effectComposer.addPass(outlinePass);
+
+    // 부드러운 화면을 보여주기 위해
+    const smaaPass = new SMAAPass();
+    effectComposer.addPass(smaaPass);
+
+    const shaderPass = new ShaderPass(GammaCorrectionShader);
+    // effectComposer.addPass(shaderPass);
   };
 
   // 물체 생성
@@ -229,6 +311,7 @@ export default function () {
 
     renderer.setSize(canvasSize.width, canvasSize.height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    effectComposer.setSize(canvasSize.width, canvasSize.height);
   };
 
   const addEvent = () => {
@@ -236,8 +319,10 @@ export default function () {
   };
 
   const initialize = () => {
-    addLight();
     const obj = create();
+
+    addLight();
+    addPostEffects(obj);
     addEvent();
     draw(obj);
   };
