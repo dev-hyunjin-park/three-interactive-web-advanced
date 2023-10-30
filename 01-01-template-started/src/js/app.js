@@ -4,14 +4,11 @@ import { convertLatLngToPos, getGradientCanvas } from "./utils";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass";
 import { FilmPass } from "three/examples/jsm/postprocessing/FilmPass";
-import { GlitchPass } from "three/examples/jsm/postprocessing/GlitchPass";
-import { AfterimagePass } from "three/examples/jsm/postprocessing/AfterimagePass";
-import { HalftonePass } from "three/examples/jsm/postprocessing/HalftonePass";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass";
-import { OutlinePass } from "three/examples/jsm/postprocessing/OutlinePass";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass";
 import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass";
+import dat from "dat.gui";
 
 export default function () {
   const canvasSize = {
@@ -76,6 +73,8 @@ export default function () {
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
 
+  const gui = new dat.GUI();
+
   const draw = (obj) => {
     const { earthGroup, star } = obj;
     earthGroup.rotation.x += 0.0005;
@@ -106,31 +105,13 @@ export default function () {
     effectComposer.addPass(renderPass);
 
     // 필름 효과
-    // const filmPass = new FilmPass(
-    //   1, // noise intensity 0 ~ 1 범위
-    //   1, // scan line intensity 0 ~ 1 브라운관 tv 느낌
-    //   4096, // scan line count 라인 갯수 0 ~ 4096
-    //   false // 색상 값 gray scale
-    // );
-    // effectComposer.addPass(filmPass);
-
-    // 글리치 효과
-    // const glitchPass = new GlitchPass();
-    // glitchPass.goWild = true;
-    // effectComposer.addPass(glitchPass);
-
-    // 잔상 효과
-    // const afterImagePass = new AfterimagePass(0.96);
-    // effectComposer.addPass(afterImagePass);
-
-    // 점묘화 효과
-    // const halftonePass = new HalftonePass(canvasSize.width, canvasSize.height, {
-    //   radius: 10, // 점의 사이즈
-    //   shape: 1, // 점의 모양 - 타원
-    //   scatter: 0, // 점들의 흩어지는 정도
-    //   blending: 0.3, // 기존 텍스쳐와 블렌딩
-    // });
-    // effectComposer.addPass(halftonePass);
+    const filmPass = new FilmPass(
+      1, // noise intensity 0 ~ 1 범위
+      1, // scan line intensity 0 ~ 1 브라운관 tv 느낌
+      4096, // scan line count 라인 갯수 0 ~ 4096
+      false // 색상 값 gray scale
+    );
+    effectComposer.addPass(filmPass);
 
     // 밝기
     const unrealBloomPass = new UnrealBloomPass(
@@ -141,23 +122,61 @@ export default function () {
     unrealBloomPass.radius = 1; // 빛이 번지는 정도 (부드럽게 빛이 넘어가는 느낌)
     effectComposer.addPass(unrealBloomPass);
 
-    const outlinePass = new OutlinePass(
-      new THREE.Vector2(canvasSize.width, canvasSize.height),
-      scene,
-      camera
-    );
-    outlinePass.selectedObjects = [...earthGroup.children];
-    outlinePass.edgeStrength = 5;
-    outlinePass.edgeGlow = 4;
-    outlinePass.pulsePeriod = 3;
-    effectComposer.addPass(outlinePass);
-
     // 부드러운 화면을 보여주기 위해
     const smaaPass = new SMAAPass();
     effectComposer.addPass(smaaPass);
 
     const shaderPass = new ShaderPass(GammaCorrectionShader);
     // effectComposer.addPass(shaderPass);
+
+    const customShaderPass = new ShaderPass({
+      uniforms: {
+        uBrightness: { value: 1 },
+        uPosition: { value: new THREE.Vector2(0, 0) },
+        uColor: { value: new THREE.Vector3(0, 0, 0.3) },
+        uAlpha: { value: 0.5 },
+        tDiffuse: { value: null }, // 포스트 프로세싱에서 정의되어있는 변수 이름 -> 값을 초기화해준다
+        // 포스트 프로세싱 파이프라인에 따라 렌더링하던 지구, 별 등을 하나의 텍스쳐 이미지로서 tDiffuse에 저장됨
+        // 이 데이터를 fragmentShader로 넘겨 픽셀의 색상값을 사용할 수 있도록 한다
+      },
+      vertexShader: `
+        varying vec2 vPosition;
+        varying vec2 vUv;
+
+        void main(){
+          gl_Position = vec4(position.x, position.y, 0.0, 1.0);
+          vPosition = position.xy;
+          vUv = uv;
+        }
+      `,
+      fragmentShader: `
+      uniform float uBrightness;
+      uniform vec2 uPosition;
+      uniform vec3 uColor;
+      uniform float uAlpha;
+      uniform sampler2D tDiffuse;
+
+      varying vec2 vPosition;
+      varying vec2 vUv;
+
+        void main(){
+          vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1);
+          vec4 tex = texture2D(tDiffuse, newUV);
+          tex.rgb += uColor;
+          float brightness = sin(uBrightness + vUv.x);
+
+          gl_FragColor = tex / brightness;
+        }
+      `,
+    });
+
+    gui.add(customShaderPass.uniforms.uPosition.value, "x", -1, 1, 0.01);
+    gui.add(customShaderPass.uniforms.uPosition.value, "y", -1, 1, 0.01);
+    gui
+      .add(customShaderPass.uniforms.uBrightness, "value", 0, 2, 0.1)
+      .name("brightness");
+
+    effectComposer.addPass(customShaderPass);
   };
 
   // 물체 생성
