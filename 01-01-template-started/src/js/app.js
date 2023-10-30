@@ -9,12 +9,16 @@ import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass";
 import { GammaCorrectionShader } from "three/examples/jsm/shaders/GammaCorrectionShader";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass";
 import dat from "dat.gui";
+import vertexShader from "../shaders/vertex.glsl";
+import fragmentShader from "../shaders/fragment.glsl";
 
 export default function () {
   const canvasSize = {
     width: window.innerWidth,
     height: window.innerHeight,
   };
+
+  const clock = new THREE.Clock();
 
   const renderer = new THREE.WebGLRenderer({
     alpha: true,
@@ -75,24 +79,6 @@ export default function () {
 
   const gui = new dat.GUI();
 
-  const draw = (obj) => {
-    const { earthGroup, star } = obj;
-    earthGroup.rotation.x += 0.0005;
-    earthGroup.rotation.y += 0.0005;
-
-    star.rotation.x += 0.001;
-    star.rotation.y += 0.001;
-
-    // 매 프레임마다 update
-    controls.update();
-    effectComposer.render();
-    // renderer.render(scene, camera); // --> addPostEffects에 위임한다
-    // 매 프레임마다 실행
-    requestAnimationFrame(() => {
-      draw(obj);
-    });
-  };
-
   const addLight = () => {
     const light = new THREE.DirectionalLight(0xffffff);
     light.position.set(2.65, 2.13, 1.02);
@@ -108,7 +94,7 @@ export default function () {
     const filmPass = new FilmPass(
       1, // noise intensity 0 ~ 1 범위
       1, // scan line intensity 0 ~ 1 브라운관 tv 느낌
-      4096, // scan line count 라인 갯수 0 ~ 4096
+      2000, // scan line count 라인 갯수 0 ~ 4096
       false // 색상 값 gray scale
     );
     effectComposer.addPass(filmPass);
@@ -117,9 +103,9 @@ export default function () {
     const unrealBloomPass = new UnrealBloomPass(
       new THREE.Vector2(canvasSize.width, canvasSize.height)
     );
-    unrealBloomPass.strength = 1.5; // 밝기
-    unrealBloomPass.threshold = 0.03; // 빛나는 영역
-    unrealBloomPass.radius = 1; // 빛이 번지는 정도 (부드럽게 빛이 넘어가는 느낌)
+    unrealBloomPass.strength = 0.4; // 밝기
+    unrealBloomPass.threshold = 0.2; // 빛나는 영역
+    unrealBloomPass.radius = 0.7; // 빛이 번지는 정도 (부드럽게 빛이 넘어가는 느낌)
     effectComposer.addPass(unrealBloomPass);
 
     // 부드러운 화면을 보여주기 위해
@@ -127,47 +113,20 @@ export default function () {
     effectComposer.addPass(smaaPass);
 
     const shaderPass = new ShaderPass(GammaCorrectionShader);
-    // effectComposer.addPass(shaderPass);
+    effectComposer.addPass(shaderPass);
 
     const customShaderPass = new ShaderPass({
       uniforms: {
-        uBrightness: { value: 1 },
+        uBrightness: { value: 0.6 },
         uPosition: { value: new THREE.Vector2(0, 0) },
-        uColor: { value: new THREE.Vector3(0, 0, 0.3) },
+        uColor: { value: new THREE.Vector3(0, 0, 2.0) },
         uAlpha: { value: 0.5 },
         tDiffuse: { value: null }, // 포스트 프로세싱에서 정의되어있는 변수 이름 -> 값을 초기화해준다
         // 포스트 프로세싱 파이프라인에 따라 렌더링하던 지구, 별 등을 하나의 텍스쳐 이미지로서 tDiffuse에 저장됨
         // 이 데이터를 fragmentShader로 넘겨 픽셀의 색상값을 사용할 수 있도록 한다
       },
-      vertexShader: `
-        varying vec2 vPosition;
-        varying vec2 vUv;
-
-        void main(){
-          gl_Position = vec4(position.x, position.y, 0.0, 1.0);
-          vPosition = position.xy;
-          vUv = uv;
-        }
-      `,
-      fragmentShader: `
-      uniform float uBrightness;
-      uniform vec2 uPosition;
-      uniform vec3 uColor;
-      uniform float uAlpha;
-      uniform sampler2D tDiffuse;
-
-      varying vec2 vPosition;
-      varying vec2 vUv;
-
-        void main(){
-          vec2 newUV = vec2(vUv.x, vUv.y + sin(vUv.x * 20.0) * 0.1);
-          vec4 tex = texture2D(tDiffuse, newUV);
-          tex.rgb += uColor;
-          float brightness = sin(uBrightness + vUv.x);
-
-          gl_FragColor = tex / brightness;
-        }
-      `,
+      vertexShader,
+      fragmentShader,
     });
 
     gui.add(customShaderPass.uniforms.uPosition.value, "x", -1, 1, 0.01);
@@ -252,7 +211,7 @@ export default function () {
 
     const mesh = new THREE.Mesh(
       new THREE.TorusGeometry(0.02, 0.002, 20, 20),
-      new THREE.MeshBasicMaterial({ color: 0x263d74 })
+      new THREE.MeshBasicMaterial({ color: 0x263d74, transparent: true })
     );
 
     mesh.position.set(position.x, position.y, position.z);
@@ -270,7 +229,7 @@ export default function () {
 
     const mesh = new THREE.Mesh(
       new THREE.TorusGeometry(0.02, 0.002, 20, 20),
-      new THREE.MeshBasicMaterial({ color: 0x263d74 })
+      new THREE.MeshBasicMaterial({ color: 0x263d74, transparent: true })
     );
 
     mesh.position.set(position.x, position.y, position.z);
@@ -295,7 +254,10 @@ export default function () {
     const gradientCanvas = getGradientCanvas("#757F94", "#263d74");
     const texture = new THREE.CanvasTexture(gradientCanvas);
 
-    const material = new THREE.MeshBasicMaterial({ map: texture });
+    const material = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+    });
     // three.js에선 gradient 생성 방법이 따로 없음: canvas 활용
     const mesh = new THREE.Mesh(geometry, material);
 
@@ -318,6 +280,9 @@ export default function () {
     return {
       earthGroup,
       star,
+      curve,
+      point1,
+      point2,
     };
   };
 
@@ -335,6 +300,40 @@ export default function () {
 
   const addEvent = () => {
     window.addEventListener("resize", resize);
+  };
+
+  const draw = (obj) => {
+    const { earthGroup, star, curve, point1, point2 } = obj;
+    earthGroup.rotation.x += 0.0005;
+    earthGroup.rotation.y += 0.0005;
+
+    star.rotation.x += 0.001;
+    star.rotation.y += 0.001;
+
+    // 매 프레임마다 update
+    controls.update();
+    effectComposer.render();
+
+    const timeElapsed = clock.getElapsedTime();
+
+    let drawRangeCount = curve.geometry.drawRange.count;
+    const progress = timeElapsed / 2.5;
+    const speed = 3;
+    drawRangeCount = progress * speed * 960;
+
+    curve.geometry.setDrawRange(0, drawRangeCount);
+
+    if (timeElapsed > 4) {
+      point1.material.opacity = 5 - timeElapsed;
+      point2.material.opacity = 5 - timeElapsed;
+      curve.material.opacity = 5 - timeElapsed;
+    }
+
+    // renderer.render(scene, camera); // --> addPostEffects에 위임한다
+    // 매 프레임마다 실행
+    requestAnimationFrame(() => {
+      draw(obj);
+    });
   };
 
   const initialize = () => {
